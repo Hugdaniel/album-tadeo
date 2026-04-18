@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<!-- 
+  DOCTYPE: Le dice al navegador que use HTML5 moderno.
+  Sin esto, algunos navegadores entran en "quirks mode" y rompen el layout.
+-->
+<html lang="es">
+<!--
+  lang="es": Importante para accesibilidad y SEO.
+  Los lectores de pantalla usan esto para pronunciar bien el texto.
+-->
+
+<head>
+  <meta charset="UTF-8">
+  <!-- 
+    charset UTF-8: Soporta caracteres especiales del español (á, é, ñ, ¡, ¿).
+    Sin esto, esos caracteres se verían como símbolos raros.
+  -->
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    viewport: Fundamental para que el álbum se vea bien en celulares.
+    width=device-width → el ancho del sitio = ancho de la pantalla del dispositivo.
+    initial-scale=1.0 → no hace zoom automático al cargar.
+    Sin esta línea, en móvil se vería todo miniaturizado.
+  -->
+
+  <meta name="theme-color" content="#1a6b3c">
+  <!--
+    theme-color: En Android Chrome, tiñe la barra de estado del navegador
+    con el color verde de Grizzy. Detalle pequeño, impacto visual grande.
+  -->
+
+  <title>Álbum de Tadeo 🐻</title>
+
+  <!-- ── FUENTES ── -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!--
+    preconnect: Le dice al navegador que empiece la conexión con Google Fonts
+    ANTES de que el CSS las pida. Reduce el tiempo de carga de las tipografías.
+  -->
+
+  <link href="https://fonts.googleapis.com/css2?family=Bubblegum+Sans&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!--
+    Bubblegum Sans → tipografía de display para títulos. Tiene esa personalidad
+    caricaturesca que pega perfecto con Grizzy and the Lemmings.
+    Nunito → cuerpo de texto. Redondeada, amigable, muy legible en móvil.
+    display=swap → muestra el texto con la fuente del sistema mientras carga
+    la fuente real. Evita el "flash" de texto invisible (FOIT).
+  -->
+
+  <!-- ── FIREBASE ── -->
+  <script type="module">
+    /*
+      type="module": Necesario para usar la sintaxis import/export de ES Modules.
+      Firebase v9+ solo funciona con módulos. Sin esto, el import fallaría.
+      Los scripts tipo module se cargan de forma diferida automáticamente
+      (no bloquean el renderizado del HTML).
+    */
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    import { getStorage } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+    /*
+      Importamos SOLO los módulos que usamos (app, database, storage).
+      Firebase v9 usa "tree shaking": solo se descarga el código que importás.
+      Si usáramos Firebase v8 (compat), descargaríamos TODO aunque no lo usemos.
+    */
+
+    // ─────────────────────────────────────────
+    // ⚠️  REEMPLAZÁ ESTOS VALORES CON LOS TUYOS
+    //     Los encontrás en Firebase Console →
+    //     Tu proyecto → Configuración → Tu app
+    // ─────────────────────────────────────────
+    const firebaseConfig = {
+      apiKey: "TU_API_KEY",
+      authDomain: "TU_AUTH_DOMAIN",
+      databaseURL: "TU_DATABASE_URL",
+      projectId: "TU_PROJECT_ID",
+      storageBucket: "TU_STORAGE_BUCKET",
+      messagingSenderId: "TU_MESSAGING_SENDER_ID",
+      appId: "TU_APP_ID"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    /*
+      initializeApp: Inicializa Firebase con tu configuración.
+      Devuelve una instancia de la app que usan todos los servicios.
+    */
+
+    const db = getDatabase(app);
+    const storage = getStorage(app);
+    /*
+      Guardamos las referencias a Realtime Database y Storage.
+      db → para guardar metadata: likes, comentarios, lista de fotos.
+      storage → para guardar los archivos de imagen (los binarios pesados).
+      Esta separación es intencional: la DB es rápida para datos pequeños,
+      Storage está optimizado para archivos grandes.
+    */
+
+    window.__firebaseDB = db;
+    window.__firebaseStorage = storage;
+    /*
+      Exponemos db y storage en el objeto global window.
+      Esto permite que app.js (que se carga después) acceda a Firebase
+      sin necesidad de repetir el import ni la inicialización.
+      Es el patrón más limpio cuando no usás un bundler como Vite/Webpack.
+    */
+  </script>
+
+  <!-- ── ESTILOS ── -->
+  <link rel="stylesheet" href="style.css">
+  <!--
+    Cargamos el CSS en el <head> para evitar FOUC (Flash of Unstyled Content).
+    Si lo cargáramos al final del body, el usuario vería el HTML sin estilos
+    por un instante antes de que cargue el CSS.
+  -->
+</head>
+
+<body>
+
+  <!-- ════════════════════════════════════════
+       HEADER
+       ════════════════════════════════════════ -->
+  <header class="site-header">
+    <!--
+      <header>: Elemento semántico HTML5. Le dice al navegador y lectores
+      de pantalla que esto es el encabezado principal del sitio.
+    -->
+
+    <div class="header-bears">
+      <!-- Decoración: ositos SVG que "enmarcan" el título -->
+      <span class="bear-deco bear-left">🐻</span>
+      <span class="bear-deco bear-right">🐻</span>
+    </div>
+
+    <h1 class="album-title">
+      <!--
+        <h1>: Solo debe haber uno por página. Es el título principal.
+        Importante para SEO y accesibilidad.
+      -->
+      <span class="title-top">🎉 Feliz Cumple</span>
+      <span class="title-name">Tadeo</span>
+    </h1>
+
+    <p class="album-subtitle">Sacá una foto, dejá tu recuerdo 📸</p>
+  </header>
+
+
+  <!-- ════════════════════════════════════════
+       SECCIÓN: SUBIR FOTO
+       ════════════════════════════════════════ -->
+  <section class="upload-section" aria-label="Subir foto">
+    <!--
+      <section>: Agrupa contenido temáticamente relacionado.
+      aria-label: Descripción para lectores de pantalla. Sin esto,
+      el lector solo diría "sección" sin saber de qué se trata.
+    -->
+
+    <div class="upload-card">
+
+      <!-- Input real de archivo (oculto visualmente) -->
+      <input
+        type="file"
+        id="fileInput"
+        accept="image/*"
+        class="file-input-hidden"
+        aria-label="Seleccionar imagen"
+      >
+      <!--
+        type="file": Input nativo del navegador para seleccionar archivos.
+        accept="image/*": Filtra para mostrar solo imágenes en el explorador.
+        En móvil, esto también le sugiere al sistema abrir la galería de fotos.
+        Lo ocultamos visualmente y lo controlamos con el botón de abajo,
+        porque el input nativo es feo y no se puede estilizar fácilmente.
+      -->
+
+      <!-- Botón de cámara (dispara el input oculto) -->
+      <button class="btn-upload" id="btnCamera" aria-label="Abrir cámara">
+        <span class="btn-icon">📷</span>
+        <span class="btn-text">Sacar foto o elegir de galería</span>
+      </button>
+      <!--
+        Este botón al clickearse llama a fileInput.click() desde JS.
+        En móvil, el navegador le pregunta al usuario si quiere usar
+        la cámara o la galería. En desktop, abre el explorador de archivos.
+      -->
+
+      <!-- Preview de la foto antes de confirmar subida -->
+      <div class="preview-container" id="previewContainer" hidden>
+        <!--
+          hidden: Atributo HTML nativo que oculta el elemento.
+          Preferimos hidden sobre display:none en CSS porque es semántico:
+          comunica que el elemento está intencionalmente oculto por lógica,
+          no solo por estética.
+        -->
+
+        <div class="preview-wrapper" id="previewWrapper">
+          <!--
+            previewWrapper: Contenedor posicionado relativamente.
+            Los stickers se posicionan ABSOLUTAMENTE dentro de este div,
+            encima de la imagen. Esto es lo que permite el efecto de
+            "pegar sticker sobre la foto".
+          -->
+          <img id="previewImg" src="" alt="Preview de tu foto" class="preview-img">
+          <!--
+            El src arranca vacío. JS lo llena con el base64 de la imagen
+            seleccionada mediante FileReader.readAsDataURL().
+          -->
+
+          <!-- Aquí JS inyecta los stickers arrastrados -->
+          <div id="stickersOnPhoto" class="stickers-layer"></div>
+          <!--
+            stickers-layer: Capa absoluta sobre la foto.
+            position: absolute con top/left/right/bottom: 0 y pointer-events: none
+            en el contenedor, pero pointer-events: all en cada sticker individual.
+            Esto permite interactuar con los stickers sin bloquear la imagen.
+          -->
+        </div>
+
+        <!-- Selector de stickers -->
+        <div class="sticker-picker" id="stickerPicker">
+          <p class="sticker-label">Agregá un sticker:</p>
+          <div class="sticker-grid" id="stickerGrid">
+            <!--
+              JS carga aquí los stickers dinámicamente desde el array
+              definido en app.js. Cada sticker es un <img> clicable.
+              Al hacer click, se "deposita" en el centro de la foto
+              y queda arrastrable.
+            -->
+          </div>
+          <button class="btn-clear-stickers" id="btnClearStickers">
+            Limpiar stickers
+          </button>
+        </div>
+
+        <!-- Nombre del autor (opcional) -->
+        <div class="author-input-wrap">
+          <input
+            type="text"
+            id="authorInput"
+            placeholder="Tu nombre (opcional)"
+            class="author-input"
+            maxlength="30"
+          >
+          <!--
+            maxlength="30": Limita a 30 caracteres para evitar textos
+            muy largos que rompan el layout de la card.
+          -->
+        </div>
+
+        <!-- Botones de acción del preview -->
+        <div class="preview-actions">
+          <button class="btn-confirm" id="btnConfirm">
+            <span>✓ Publicar foto</span>
+          </button>
+          <button class="btn-cancel" id="btnCancel">
+            <span>✕ Cancelar</span>
+          </button>
+        </div>
+        <!--
+          Separamos Confirmar y Cancelar en botones distintos.
+          btnConfirm → sube la imagen a Firebase Storage + crea el registro en DB.
+          btnCancel → limpia el preview sin subir nada.
+        -->
+
+      </div>
+      <!-- fin previewContainer -->
+
+      <!-- Indicador de carga durante la subida -->
+      <div class="upload-progress" id="uploadProgress" hidden>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+          <!--
+            progressFill: div hijo al que le variamos el width desde 0% a 100%
+            mediante JS mientras Firebase reporta el progreso de la subida.
+            Firebase Storage uploadBytesResumable() emite eventos de progreso
+            que usamos para actualizar este width en tiempo real.
+          -->
+        </div>
+        <p class="progress-text" id="progressText">Subiendo... 0%</p>
+      </div>
+
+    </div>
+    <!-- fin upload-card -->
+  </section>
+
+
+  <!-- ════════════════════════════════════════
+       SECCIÓN: FEED DE FOTOS
+       ════════════════════════════════════════ -->
+  <main class="feed-section" id="photoFeed" aria-label="Álbum de fotos">
+    <!--
+      <main>: Contenido principal de la página. Solo debe haber uno.
+      Importante para lectores de pantalla y SEO.
+      aria-label: Describe la región para accesibilidad.
+    -->
+
+    <!-- Estado vacío: se muestra cuando no hay fotos todavía -->
+    <div class="empty-state" id="emptyState">
+      <span class="empty-icon">📷</span>
+      <p>¡Sé el primero en subir una foto!</p>
+    </div>
+    <!--
+      El emptyState se oculta automáticamente en JS cuando llega
+      la primera foto desde Firebase. Se muestra si el feed está vacío.
+    -->
+
+  </main>
+  <!--
+    Las cards de fotos se INYECTAN AQUÍ por JavaScript.
+    No las escribimos en el HTML porque vienen dinámicamente de Firebase.
+    JS escucha el evento onChildAdded de la DB y crea el DOM de cada card.
+  -->
+
+
+  <!-- ════════════════════════════════════════
+       MODAL DE COMENTARIOS
+       ════════════════════════════════════════ -->
+  <div class="modal-overlay" id="commentsModal" role="dialog" aria-modal="true" aria-label="Comentarios">
+    <!--
+      role="dialog": Informa a lectores de pantalla que esto es un diálogo modal.
+      aria-modal="true": Indica que el resto del contenido está "bloqueado".
+      hidden: Arranca oculto, JS lo muestra al clickear el ícono de comentario.
+    -->
+
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h2 class="modal-title">Comentarios</h2>
+        <button class="btn-close-modal" id="btnCloseModal" aria-label="Cerrar comentarios">✕</button>
+      </div>
+
+      <!-- Lista de comentarios existentes -->
+      <div class="comments-list" id="commentsList" role="list">
+        <!--
+          role="list": Semántica de accesibilidad. Los comentarios se cargan
+          aquí dinámicamente desde Firebase cuando se abre el modal.
+          Cada comentario será un role="listitem".
+        -->
+      </div>
+
+      <!-- Formulario para agregar comentario nuevo -->
+      <div class="comment-form">
+        <input
+          type="text"
+          id="commentAuthor"
+          placeholder="Tu nombre"
+          class="comment-input comment-author"
+          maxlength="30"
+        >
+        <textarea
+          id="commentText"
+          placeholder="Escribí tu mensaje... 💬"
+          class="comment-input comment-textarea"
+          maxlength="200"
+          rows="3"
+        ></textarea>
+        <!--
+          maxlength="200": Limite razonable para comentarios en un álbum.
+          Evita que alguien escriba un ensayo y rompa el layout.
+          rows="3": Altura visual inicial del textarea.
+        -->
+        <button class="btn-send-comment" id="btnSendComment">
+          Enviar comentario 💬
+        </button>
+      </div>
+
+    </div>
+    <!-- fin modal-content -->
+  </div>
+  <!-- fin modal -->
+
+  <!-- Fondo oscuro detrás del modal (click aquí cierra el modal) -->
+  <div class="modal-backdrop" id="modalBackdrop"></div>
+  <!--
+    Separamos el backdrop del modal para poder clickearlo independientemente.
+    Al hacer click en el backdrop (fuera del modal) se cierra el modal.
+    Es el comportamiento estándar de modales en apps móviles.
+  -->
+
+
+  <!-- ════════════════════════════════════════
+       MODAL DE ZOOM (ver foto ampliada)
+       ════════════════════════════════════════ -->
+  <div class="zoom-overlay" id="zoomModal" role="dialog" aria-label="Ver foto">
+    <button class="btn-close-zoom" id="btnCloseZoom" aria-label="Cerrar">✕</button>
+    <img id="zoomImg" src="" alt="Foto ampliada" class="zoom-img">
+  </div>
+  <!--
+    Al hacer tap/click en cualquier foto del feed, se abre este modal
+    con la imagen a pantalla completa. Mejora mucho la experiencia en móvil.
+  -->
+
+
+  <!-- ════════════════════════════════════════
+       FOOTER - VISION DESIGN CTA
+       ════════════════════════════════════════ -->
+  <footer class="site-footer">
+    <!--
+      <footer>: Elemento semántico HTML5. Pie de página del documento.
+      Intencionalmente discreto para no competir con el álbum.
+    -->
+    <p class="footer-text">
+      Hecho con ❤️ por
+      <a
+        href="https://instagram.com/visiondesign_ok"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="footer-link"
+      >
+        Vision Design
+      </a>
+    </p>
+    <!--
+      target="_blank": Abre en nueva pestaña para no sacar al usuario del álbum.
+      rel="noopener noreferrer": Seguridad. Sin esto, la nueva pestaña puede
+      acceder al objeto window de esta página (vulnerabilidad conocida).
+      noopener → bloquea el acceso al window.opener
+      noreferrer → no envía el referrer header al sitio destino
+    -->
+  </footer>
+
+
+  <!-- ── JAVASCRIPT ── -->
+  <script src="app.js" type="module"></script>
+  <!--
+    Cargamos el JS al FINAL del body, DESPUÉS de todo el HTML.
+    Esto garantiza que cuando app.js se ejecute, todos los elementos
+    del DOM (previewContainer, photoFeed, etc.) ya existen en memoria.
+    Si lo cargáramos en el <head>, document.getElementById() devolvería null.
+    
+    type="module": Necesario porque app.js usa import de Firebase.
+    Los módulos se ejecutan en modo estricto ("use strict") automáticamente.
+    Los módulos tienen su propio scope, las variables no contaminan el global.
+  -->
+
+</body>
+</html>
