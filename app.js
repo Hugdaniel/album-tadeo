@@ -57,6 +57,8 @@ import { getStorage,
 const firebaseConfig = {
   apiKey: "AIzaSyD-eFqalBS9kx_MBQqBIfJKOTODVzMEunI",
   authDomain: "diego-minecraft.firebaseapp.com",
+  databaseURL:"https://diego-minecraft-default-rtdb.firebaseio.com"
+,
   projectId: "diego-minecraft",
   storageBucket: "diego-minecraft.firebasestorage.app",
   messagingSenderId: "474866264166",
