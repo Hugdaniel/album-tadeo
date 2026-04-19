@@ -433,7 +433,28 @@ input:focus, textarea:focus {
   /* El <img> dentro no captura eventos, solo el div padre */
 }
 
-/* Botón de eliminar que aparece en cada sticker al hover */
+/* Handle de resize — esquina inferior derecha del sticker */
+.sticker-resize {
+  position: absolute;
+  bottom: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border: 2px solid var(--color-accent);
+  border-radius: 4px;
+  cursor: se-resize;
+  pointer-events: all;
+  opacity: 0;
+  transition: opacity var(--transition);
+  z-index: 10;
+  touch-action: none;
+}
+
+.sticker-on-photo:hover .sticker-resize {
+  opacity: 1;
+}
+
 .sticker-delete {
   position: absolute;
   top: -8px;

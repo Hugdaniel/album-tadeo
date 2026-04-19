@@ -408,103 +408,194 @@ function addStickerToPhoto(sticker) {
   stickerEl.appendChild(deleteBtn);
   stickersOnPhoto.appendChild(stickerEl);
 
-  // Activamos el sistema de drag para este sticker
+  // Activamos drag Y resize para este sticker
   makeDraggable(stickerEl);
+  makeResizable(stickerEl);
 }
 
 function makeDraggable(el) {
   /*
-    Convierte un elemento en arrastrable tanto con mouse como con touch.
-    
-    ESTRUCTURA DEL DRAG:
-    1. pointerdown → guarda posición inicial, marca el elemento como "en drag"
-    2. pointermove → calcula el desplazamiento y mueve el elemento
-    3. pointerup   → suelta el elemento
-    
-    Usamos Pointer Events API (en lugar de Mouse + Touch Events por separado)
-    porque maneja ambos automáticamente con un solo listener.
+    Drag con Pointer Events API.
+    El pointerdown solo inicia el drag si NO viene del handle de resize.
+    Así los dos gestos no se pisan entre sí.
   */
-
   el.addEventListener("pointerdown", (e) => {
+    // Si el click viene del handle de resize o del botón eliminar, no arrastramos
+    if (e.target.classList.contains("sticker-resize") ||
+        e.target.classList.contains("sticker-delete")) return;
+
     e.preventDefault();
-    /*
-      preventDefault() en touch evita que el scroll de página se active
-      mientras arrastramos el sticker.
-    */
     e.stopPropagation();
-
     el.setPointerCapture(e.pointerId);
-    /*
-      setPointerCapture: "captura" el pointer en este elemento.
-      Significa que aunque el cursor salga del elemento, 
-      los eventos de pointermove siguen llegando a él.
-      Sin esto, si el usuario mueve el mouse muy rápido,
-      el elemento "pierde" el rastro del cursor y el drag se congela.
-    */
 
-    const rect = el.getBoundingClientRect();
-    /*
-      getBoundingClientRect() devuelve la posición y tamaño del elemento
-      relativo al viewport (la pantalla visible).
-      Lo usamos para saber dónde está el sticker ANTES del drag.
-    */
-
+    const rect       = el.getBoundingClientRect();
     const parentRect = el.parentElement.getBoundingClientRect();
-    /*
-      También necesitamos la posición del contenedor padre (la foto).
-      Los cálculos del drag son RELATIVOS al padre, no al viewport.
-    */
 
     activeDrag = {
       el,
-      // Diferencia entre donde el usuario hizo click y el borde del sticker
-      // Esto evita que el sticker "salte" al centro del cursor al empezar el drag
       offsetX: e.clientX - rect.left,
       offsetY: e.clientY - rect.top,
       parentRect
     };
 
     el.style.zIndex = "1000";
-    // Ponemos el sticker que se está arrastrando encima de los demás
   });
 
   el.addEventListener("pointermove", (e) => {
     if (!activeDrag || activeDrag.el !== el) return;
-    // Solo procesamos si ESTE elemento es el que está en drag
-
     e.preventDefault();
 
     const { offsetX, offsetY, parentRect } = activeDrag;
-
-    // Calculamos la nueva posición en píxeles relativos al padre
     let newLeft = e.clientX - parentRect.left - offsetX;
     let newTop  = e.clientY - parentRect.top  - offsetY;
 
-    // Clamping: evitamos que el sticker salga de los límites de la foto
     const elWidth  = el.offsetWidth;
     const elHeight = el.offsetHeight;
     newLeft = Math.max(0, Math.min(newLeft, parentRect.width  - elWidth));
     newTop  = Math.max(0, Math.min(newTop,  parentRect.height - elHeight));
-    /*
-      Math.max(0, ...) → mínimo 0px (no sale por la izquierda/arriba)
-      Math.min(..., parentWidth - elWidth) → máximo al borde derecho/abajo
-    */
 
-    // Convertimos a porcentaje para que funcione a cualquier tamaño
     el.style.left = `${(newLeft / parentRect.width)  * 100}%`;
     el.style.top  = `${(newTop  / parentRect.height) * 100}%`;
-    /*
-      Porcentajes en lugar de px para que si el contenedor
-      cambia de tamaño (responsive), los stickers mantengan su posición relativa.
-    */
   });
 
   el.addEventListener("pointerup", () => {
     if (activeDrag && activeDrag.el === el) {
       activeDrag = null;
-      el.style.zIndex = ""; // Reseteamos el z-index
+      el.style.zIndex = "";
     }
   });
+}
+
+function makeResizable(el) {
+  /*
+    DOS modos de resize según el dispositivo:
+    
+    DESKTOP → handle en esquina inferior derecha (cuadradito arrastrable).
+    El usuario lo arrastra y el sticker crece/achica.
+    
+    MÓVIL → pinch con dos dedos (gesture nativo).
+    Calculamos la distancia entre los dos touch points y escalamos.
+    
+    Ambos respetan un tamaño mínimo (30px) y máximo (300px).
+  */
+
+  const MIN_SIZE = 30;
+  const MAX_SIZE = 300;
+
+  // ── Handle de resize para desktop ──────────────────────────
+  const handle = document.createElement("div");
+  handle.className = "sticker-resize";
+  handle.setAttribute("aria-label", "Cambiar tamaño");
+  /*
+    El handle es un pequeño cuadrado en la esquina inferior derecha.
+    Su estilo está en styles.css (.sticker-resize).
+  */
+  el.appendChild(handle);
+
+  let resizeDrag = null;
+  // Estado del resize activo (similar al activeDrag del drag)
+
+  handle.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handle.setPointerCapture(e.pointerId);
+
+    resizeDrag = {
+      startX:    e.clientX,
+      startY:    e.clientY,
+      startSize: el.offsetWidth
+      /*
+        Guardamos el tamaño INICIAL del sticker al empezar el resize.
+        Así calculamos el delta (cuánto movió) y lo sumamos al tamaño inicial.
+        Si usáramos el tamaño actual en cada frame, el resize sería inestable.
+      */
+    };
+  });
+
+  handle.addEventListener("pointermove", (e) => {
+    if (!resizeDrag) return;
+    e.preventDefault();
+
+    // Delta: cuánto se movió el mouse desde que empezó el resize
+    const deltaX = e.clientX - resizeDrag.startX;
+    const deltaY = e.clientY - resizeDrag.startY;
+
+    // Usamos el mayor de los dos deltas para resize proporcional
+    const delta = (Math.abs(deltaX) > Math.abs(deltaY)) ? deltaX : deltaY;
+
+    const newSize = Math.max(MIN_SIZE, Math.min(MAX_SIZE, resizeDrag.startSize + delta));
+
+    el.style.width  = `${newSize}px`;
+    el.style.height = `${newSize}px`;
+    /*
+      Seteamos width y height iguales para mantener el sticker cuadrado.
+      El <img> interno tiene object-fit: contain, así que la imagen
+      siempre se escala proporcionalmente sin distorsión.
+    */
+  });
+
+  handle.addEventListener("pointerup", () => {
+    resizeDrag = null;
+  });
+
+  // ── Pinch para móvil ────────────────────────────────────────
+  let pinchStartDist = null;
+  let pinchStartSize = null;
+
+  el.addEventListener("touchstart", (e) => {
+    if (e.touches.length === 2) {
+      /*
+        Cuando hay exactamente 2 dedos sobre el sticker,
+        guardamos la distancia inicial entre ellos y el tamaño actual.
+      */
+      pinchStartDist = getPinchDistance(e.touches);
+      pinchStartSize = el.offsetWidth;
+      e.preventDefault();
+      // preventDefault evita que el pinch haga zoom en la página
+    }
+  }, { passive: false });
+  /*
+    passive: false es necesario para poder llamar preventDefault().
+    Los touch listeners son passive por defecto en Chrome para mejorar
+    el scroll performance, pero eso impide cancelar el zoom nativo.
+  */
+
+  el.addEventListener("touchmove", (e) => {
+    if (e.touches.length !== 2 || !pinchStartDist) return;
+    e.preventDefault();
+
+    const currentDist = getPinchDistance(e.touches);
+    /*
+      Calculamos el ratio de cambio de distancia:
+      Si los dedos se alejaron el doble → ratio = 2 → sticker el doble de grande.
+      Si los dedos se acercaron a la mitad → ratio = 0.5 → sticker la mitad.
+    */
+    const ratio   = currentDist / pinchStartDist;
+    const newSize = Math.max(MIN_SIZE, Math.min(MAX_SIZE, pinchStartSize * ratio));
+
+    el.style.width  = `${newSize}px`;
+    el.style.height = `${newSize}px`;
+  }, { passive: false });
+
+  el.addEventListener("touchend", () => {
+    if (event.touches.length < 2) {
+      pinchStartDist = null;
+      pinchStartSize = null;
+    }
+  });
+}
+
+function getPinchDistance(touches) {
+  /*
+    Calcula la distancia entre dos puntos de toque usando Pitágoras.
+    touches[0] y touches[1] son los dos dedos en pantalla.
+    
+    dx = diferencia horizontal, dy = diferencia vertical.
+    distancia = √(dx² + dy²)
+  */
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 
