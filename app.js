@@ -26,25 +26,49 @@
 
 /*
   Importamos solo las funciones de Firebase que necesitamos.
-  Tree shaking: el bundler (o el navegador) descarta el resto.
-  Cada import es explícito — sabés exactamente qué usa cada sección.
+  Firebase se inicializa AQUÍ, en el mismo módulo, para garantizar
+  que db y storage estén listos antes de que cualquier función los use.
+  El patrón anterior (window.__firebaseDB desde un script separado)
+  causaba race condition: app.js podía ejecutarse antes que el otro módulo.
 */
-import {
-  ref as dbRef,          // Para crear referencias a rutas en la Realtime Database
-  push,                  // Para agregar items a un array (genera ID automático)
-  set,                   // Para setear un valor en una ruta exacta
-  onChildAdded,          // Listener: se dispara por cada hijo existente Y cada nuevo
-  onChildRemoved,        // Listener: se dispara cuando se elimina un hijo
-  runTransaction,        // Para operaciones atómicas (like sin race condition)
-  get                    // Para leer una vez sin listener continuo
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase,
+  ref as dbRef,
+  push,
+  set,
+  onChildAdded,
+  onChildRemoved,
+  runTransaction,
+  get
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-import {
-  ref as storageRef,     // Para crear referencias a rutas en Storage
-  uploadBytesResumable,  // Sube un archivo con seguimiento de progreso
-  getDownloadURL,        // Obtiene la URL pública de un archivo subido
-  deleteObject           // Elimina un archivo de Storage
+import { getStorage,
+  ref as storageRef,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+// ─────────────────────────────────────────────────────────────
+// ⚠️  REEMPLAZÁ ESTOS VALORES CON LOS DE TU PROYECTO FIREBASE
+//     Firebase Console → tu proyecto → ⚙️ Configuración → Tu app
+// ─────────────────────────────────────────────────────────────
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyD-eFqalBS9kx_MBQqBIfJKOTODVzMEunI",
+  authDomain: "diego-minecraft.firebaseapp.com",
+  projectId: "diego-minecraft",
+  storageBucket: "diego-minecraft.firebasestorage.app",
+  messagingSenderId: "474866264166",
+  appId: "1:474866264166:web:c8cd54b39d7aa441fe25a7",
+  measurementId: "G-SJC1EK5GYB"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db          = getDatabase(firebaseApp);
+const storage     = getStorage(firebaseApp);
+// db y storage son constantes del módulo, disponibles en todo el archivo
+// desde este momento en adelante, sin depender de window ni de otro script.
 
 /*
   ─────────────────────────────────────────────────
@@ -54,11 +78,11 @@ import {
   ─────────────────────────────────────────────────
 */
 const STICKERS = [
-  { id: "s1", src: "stickers/grizzy-cara.png",      alt: "Grizzy cara" },
-  { id: "s2", src: "stickers/grizzy-corriendo.png", alt: "Grizzy corriendo" },
-  { id: "s3", src: "stickers/lemmings-grupo.png",   alt: "Los Lemmings" },
-  { id: "s4", src: "stickers/lemming-solo.png",     alt: "Lemming solo" },
-  { id: "s5", src: "stickers/feliz-cumple.png",     alt: "Feliz cumple" },
+  { id: "s1", src: "assets/tabodi-st.png",      alt: "tabodi solo" },
+  { id: "s2", src: "assets/tabodi-st2.png", alt: "torta tabodi" },
+  { id: "s3", src: "assets/oso-st.png",   alt: "oso personaje" },
+  { id: "s4", src: "assets/globo-st.png",     alt: "globo" },
+  { id: "s5", src: "assets/tadeo-st.png",     alt: "cartel" },
 ];
 /*
   Array de objetos en lugar de array de strings.
@@ -137,35 +161,13 @@ let photoCount      = 0;     // Cantidad de fotos en el feed
 // 4. INICIALIZACIÓN
 // ═══════════════════════════════════════════════════
 
-/*
-  document.addEventListener("DOMContentLoaded") se dispara cuando el HTML
-  está completamente parseado pero antes de que carguen imágenes, CSS, etc.
-  
-  Es el momento seguro para acceder al DOM y conectar eventos.
-  
-  Sin este wrapper, si el script se ejecutara antes que el HTML, las
-  llamadas a getElementById() devolverían null.
-  
-  NOTA: Como el script tiene type="module" ya se ejecuta diferido automáticamente,
-  pero el DOMContentLoaded es una buena práctica explícita.
-*/
+// db y storage ya están inicializados arriba como constantes del módulo.
+// DOMContentLoaded garantiza que el HTML esté listo antes de conectar eventos.
+// Los scripts type="module" ya son diferidos, pero lo dejamos explícito por claridad.
 document.addEventListener("DOMContentLoaded", () => {
-
-  // Recuperamos las instancias de Firebase que guardamos en window desde el HTML
-  const db      = window.__firebaseDB;
-  const storage = window.__firebaseStorage;
-
-  // Verificamos que Firebase se haya inicializado correctamente
-  if (!db || !storage) {
-    console.error("Firebase no está inicializado. Revisá la configuración en index.html.");
-    return; // Detenemos la ejecución si Firebase falla
-  }
-
-  // Arrancamos todos los subsistemas
   initStickerPicker();
   initUpload(db, storage);
   initFeed(db);
-  initCommentModal(db);
   initZoomModal();
 });
 

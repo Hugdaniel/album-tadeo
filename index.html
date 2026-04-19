@@ -49,63 +49,7 @@
     la fuente real. Evita el "flash" de texto invisible (FOIT).
   -->
 
-  <!-- ── FIREBASE ── -->
-  <script type="module">
-    /*
-      type="module": Necesario para usar la sintaxis import/export de ES Modules.
-      Firebase v9+ solo funciona con módulos. Sin esto, el import fallaría.
-      Los scripts tipo module se cargan de forma diferida automáticamente
-      (no bloquean el renderizado del HTML).
-    */
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-    import { getStorage } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-    /*
-      Importamos SOLO los módulos que usamos (app, database, storage).
-      Firebase v9 usa "tree shaking": solo se descarga el código que importás.
-      Si usáramos Firebase v8 (compat), descargaríamos TODO aunque no lo usemos.
-    */
-
-    // ─────────────────────────────────────────
-    // ⚠️  REEMPLAZÁ ESTOS VALORES CON LOS TUYOS
-    //     Los encontrás en Firebase Console →
-    //     Tu proyecto → Configuración → Tu app
-    // ─────────────────────────────────────────
-    const firebaseConfig = {
-      apiKey: "TU_API_KEY",
-      authDomain: "TU_AUTH_DOMAIN",
-      databaseURL: "TU_DATABASE_URL",
-      projectId: "TU_PROJECT_ID",
-      storageBucket: "TU_STORAGE_BUCKET",
-      messagingSenderId: "TU_MESSAGING_SENDER_ID",
-      appId: "TU_APP_ID"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    /*
-      initializeApp: Inicializa Firebase con tu configuración.
-      Devuelve una instancia de la app que usan todos los servicios.
-    */
-
-    const db = getDatabase(app);
-    const storage = getStorage(app);
-    /*
-      Guardamos las referencias a Realtime Database y Storage.
-      db → para guardar metadata: likes, comentarios, lista de fotos.
-      storage → para guardar los archivos de imagen (los binarios pesados).
-      Esta separación es intencional: la DB es rápida para datos pequeños,
-      Storage está optimizado para archivos grandes.
-    */
-
-    window.__firebaseDB = db;
-    window.__firebaseStorage = storage;
-    /*
-      Exponemos db y storage en el objeto global window.
-      Esto permite que app.js (que se carga después) acceda a Firebase
-      sin necesidad de repetir el import ni la inicialización.
-      Es el patrón más limpio cuando no usás un bundler como Vite/Webpack.
-    */
-  </script>
+  <!-- Firebase y toda la lógica se inicializan en app.js -->
 
   <!-- ── ESTILOS ── -->
   <link rel="stylesheet" href="style.css">
