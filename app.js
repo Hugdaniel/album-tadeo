@@ -25,14 +25,13 @@
 // ═══════════════════════════════════════════════════
 
 /*
-  Importamos solo las funciones de Firebase que necesitamos.
-  Firebase se inicializa AQUÍ, en el mismo módulo, para garantizar
-  que db y storage estén listos antes de que cualquier función los use.
-  El patrón anterior (window.__firebaseDB desde un script separado)
-  causaba race condition: app.js podía ejecutarse antes que el otro módulo.
+  Sin Firebase Storage — las imágenes se comprimen en el cliente
+  y se guardan como base64 directamente en Realtime Database.
+  Mismo patrón que el álbum de Minecraft. Sin CORS, sin costos.
 */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase,
+import {
+  getDatabase,
   ref as dbRef,
   push,
   set,
@@ -42,13 +41,6 @@ import { getDatabase,
   get
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
-import { getStorage,
-  ref as storageRef,
-  uploadBytesResumable,
-  getDownloadURL,
-  deleteObject
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-
 // ─────────────────────────────────────────────────────────────
 // ⚠️  REEMPLAZÁ ESTOS VALORES CON LOS DE TU PROYECTO FIREBASE
 //     Firebase Console → tu proyecto → ⚙️ Configuración → Tu app
@@ -57,8 +49,7 @@ import { getStorage,
 const firebaseConfig = {
   apiKey: "AIzaSyD-eFqalBS9kx_MBQqBIfJKOTODVzMEunI",
   authDomain: "diego-minecraft.firebaseapp.com",
-  databaseURL:"https://diego-minecraft-default-rtdb.firebaseio.com"
-,
+  databaseURL:"https://diego-minecraft-default-rtdb.firebaseio.com/",
   projectId: "diego-minecraft",
   storageBucket: "diego-minecraft.firebasestorage.app",
   messagingSenderId: "474866264166",
@@ -68,9 +59,7 @@ const firebaseConfig = {
 
 const firebaseApp = initializeApp(firebaseConfig);
 const db          = getDatabase(firebaseApp);
-const storage     = getStorage(firebaseApp);
-// db y storage son constantes del módulo, disponibles en todo el archivo
-// desde este momento en adelante, sin depender de window ni de otro script.
+// Sin Storage — todo va a Realtime Database como base64 comprimido.
 
 /*
   ─────────────────────────────────────────────────
@@ -80,9 +69,9 @@ const storage     = getStorage(firebaseApp);
   ─────────────────────────────────────────────────
 */
 const STICKERS = [
-  { id: "s1", src: "assets/tabodi-st.png",      alt: "tabodi solo" },
-  { id: "s2", src: "assets/tabodi-st2.png", alt: "torta tabodi" },
-  { id: "s3", src: "assets/oso-st.png",   alt: "oso personaje" },
+  { id: "s1", src: "assets/tabodi-st.png",      alt: "tabodi" },
+  { id: "s2", src: "assets/tabodi-st2.png", alt: "torta y tabodi" },
+  { id: "s3", src: "assets/oso-st.png",   alt: "oso" },
   { id: "s4", src: "assets/globo-st.png",     alt: "globo" },
   { id: "s5", src: "assets/tadeo-st.png",     alt: "cartel" },
 ];
@@ -168,7 +157,7 @@ let photoCount      = 0;     // Cantidad de fotos en el feed
 // Los scripts type="module" ya son diferidos, pero lo dejamos explícito por claridad.
 document.addEventListener("DOMContentLoaded", () => {
   initStickerPicker();
-  initUpload(db, storage);
+  initUpload(db);
   initFeed(db);
   initZoomModal();
 });
@@ -178,97 +167,37 @@ document.addEventListener("DOMContentLoaded", () => {
 // 5. LÓGICA DE SUBIDA DE FOTO
 // ═══════════════════════════════════════════════════
 
-function initUpload(db, storage) {
-  /*
-    Esta función configura todo lo relacionado con seleccionar y subir una foto.
-    Recibe db y storage como parámetros para no depender de variables globales.
-  */
+function initUpload(db) {
+  btnCamera.addEventListener("click", () => fileInput.click());
 
-  // Click en el botón de cámara → activa el input de archivo oculto
-  btnCamera.addEventListener("click", () => {
-    fileInput.click();
-    /*
-      fileInput.click() programa maticamente abre el diálogo del sistema
-      para seleccionar un archivo / abrir la cámara.
-      En móvil, el SO pregunta si usar cámara o galería.
-    */
-  });
-
-  // Cuando el usuario elige un archivo...
   fileInput.addEventListener("change", (e) => {
     const file = e.target.files[0];
-    /*
-      e.target.files es un FileList (array-like).
-      files[0] es el primer (y único en nuestro caso) archivo seleccionado.
-    */
-
-    if (!file) return; // Si el usuario canceló, files[0] es undefined
-
-    // Validamos que sea una imagen
+    if (!file) return;
     if (!file.type.startsWith("image/")) {
       alert("Por favor seleccioná una imagen.");
       return;
     }
-
-    // Validamos el tamaño (máx 10MB para no saturar Firebase Storage gratuito)
-    if (file.size > 10 * 1024 * 1024) {
-      alert("La imagen es demasiado grande. Máximo 10MB.");
-      return;
-    }
-
     selectedFile = file;
-    // Guardamos el archivo en el estado para usarlo al confirmar la subida
-
-    // Leemos el archivo como base64 para mostrarlo en el preview
     const reader = new FileReader();
-    /*
-      FileReader es una API del navegador para leer archivos locales
-      sin enviarlos al servidor.
-      readAsDataURL() convierte el archivo en una cadena base64
-      con el formato: "data:image/jpeg;base64,/9j/4AAQ..."
-    */
-
     reader.onload = (event) => {
-      /*
-        reader.onload se dispara cuando la lectura termina.
-        event.target.result contiene el base64 de la imagen.
-      */
       previewImg.src = event.target.result;
-      // Asignamos el base64 como src de la imagen de preview
-
       previewContainer.hidden = false;
-      // Mostramos el contenedor de preview (arranca hidden en el HTML)
-
       btnCamera.hidden = true;
-      // Ocultamos el botón de cámara mientras estamos en modo preview
-
-      // Limpiar stickers previos si hubiera de una foto anterior
       stickersOnPhoto.innerHTML = "";
     };
-
     reader.readAsDataURL(file);
-    // Disparamos la lectura del archivo
-
-    // Resetear el input para que el evento "change" se dispare
-    // aunque el usuario elija el mismo archivo dos veces
     fileInput.value = "";
   });
 
-  // Botón CANCELAR
   btnCancel.addEventListener("click", resetUploadUI);
 
-  // Botón CONFIRMAR SUBIDA
   btnConfirm.addEventListener("click", () => {
     if (!selectedFile) return;
-    uploadPhoto(db, storage);
+    uploadPhoto(db);
   });
 }
 
 function resetUploadUI() {
-  /*
-    Limpia toda la UI de preview y vuelve al estado inicial.
-    Se llama al cancelar o después de una subida exitosa.
-  */
   selectedFile = null;
   previewImg.src = "";
   previewContainer.hidden = true;
@@ -277,137 +206,96 @@ function resetUploadUI() {
   authorInput.value = "";
   stickersOnPhoto.innerHTML = "";
   progressFill.style.width = "0%";
-  progressText.textContent = "Subiendo... 0%";
-  fileInput.value = ""; // Resetea el input de archivo
+  progressText.textContent = "Comprimiendo...";
+  fileInput.value = "";
 }
 
-async function uploadPhoto(db, storage) {
+function compressImage(file, maxWidth = 1200, quality = 0.75) {
   /*
-    async/await: Trabajamos con Promesas de forma más legible.
-    En lugar de .then().catch() anidados, el código se lee como síncrono
-    aunque internamente sea asíncrono.
-  */
-
-  const author = authorInput.value.trim() || "Anónimo";
-  /*
-    .trim() elimina espacios al inicio y al final.
-    || "Anónimo" es el valor por defecto si el campo está vacío.
-  */
-
-  // Generamos un nombre único para el archivo en Storage
-  const timestamp = Date.now();
-  /*
-    Date.now() devuelve milisegundos desde epoch (1 enero 1970).
-    Ejemplo: 1719234567890
-    Es prácticamente único para archivos subidos en momentos distintos.
-  */
-  const extension = selectedFile.type.split("/")[1];
-  // selectedFile.type es "image/jpeg" → split("/")[1] → "jpeg"
-  const fileName = `${ALBUM_NAME}/${timestamp}_${Math.random().toString(36).slice(2, 8)}.${extension}`;
-  /*
-    Nombre final ejemplo: "album-tadeo/1719234567890_k3f9a2.jpeg"
-    Math.random().toString(36) convierte un número aleatorio a base 36 (letras+números)
-    .slice(2, 8) toma 6 caracteres, suficiente para evitar colisiones.
+    Comprime la imagen antes de guardarla en Firestore.
     
-    Carpeta = ALBUM_NAME para organizar Storage por evento.
+    maxWidth: 1200px — suficiente para ver bien en pantalla,
+    sin ocupar demasiado espacio en la base de datos.
+    
+    quality: 0.75 — 75% de calidad JPEG. Buen balance entre
+    nitidez visual y tamaño del archivo resultante.
+    
+    Usamos un <canvas> invisible para redibujar la imagen
+    al nuevo tamaño y exportarla como base64.
+    
+    Retorna una Promise que resuelve con el string base64.
   */
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      // Calculamos el nuevo ancho manteniendo la proporción
+      const ratio  = Math.min(1, maxWidth / img.width);
+      const width  = Math.round(img.width  * ratio);
+      const height = Math.round(img.height * ratio);
 
-  // Mostramos barra de progreso
+      const canvas = document.createElement("canvas");
+      canvas.width  = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      URL.revokeObjectURL(url); // Liberamos memoria
+      resolve(canvas.toDataURL("image/jpeg", quality));
+      // toDataURL devuelve "data:image/jpeg;base64,/9j/4AAQ..."
+    };
+    img.src = url;
+  });
+}
+
+async function uploadPhoto(db) {
+  const author    = authorInput.value.trim() || "Anónimo";
+  const timestamp = Date.now();
+
   uploadProgress.hidden = false;
-  btnConfirm.disabled = true;
+  btnConfirm.disabled   = true;
+  progressText.textContent = "Comprimiendo...";
+  progressFill.style.width = "30%";
   /*
-    Deshabilitamos el botón de confirmar para evitar subidas duplicadas
-    si el usuario hace doble click.
+    Mostramos 30% mientras comprime — la compresión es local
+    y rápida, pero el usuario necesita feedback visual
+    para saber que algo está pasando.
   */
 
   try {
-    // Referencia al lugar en Storage donde guardaremos la imagen
-    const imageRef = storageRef(storage, `photos/${fileName}`);
-    /*
-      storageRef(storage, ruta) crea una referencia (no sube nada todavía).
-      La ruta es: "photos/album-tadeo/1719234567890_k3f9a2.jpeg"
-    */
+    // Paso 1: Comprimir la imagen
+    const base64 = await compressImage(selectedFile);
+    progressFill.style.width  = "60%";
+    progressText.textContent  = "Guardando...";
 
-    // Iniciamos la subida con seguimiento de progreso
-    const uploadTask = uploadBytesResumable(imageRef, selectedFile);
-    /*
-      uploadBytesResumable devuelve un objeto "task" que:
-      - Emite eventos de progreso (snapshot.bytesTransferred / snapshot.totalBytes)
-      - Emite evento de error si falla
-      - Emite evento de completado cuando termina
-    */
+    // Paso 2: Guardar en Realtime Database
+    const photosRef  = dbRef(db, `${ALBUM_NAME}/photos`);
+    const newPhotoRef = push(photosRef);
 
-    // Escuchamos los eventos de la subida
-    uploadTask.on(
-      "state_changed",
+    progressFill.style.width = "80%";
 
-      // CALLBACK 1: Progreso
-      (snapshot) => {
-        const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-        progressFill.style.width = `${progress}%`;
-        progressText.textContent = `Subiendo... ${progress}%`;
-        /*
-          Actualizamos el ancho del div de progreso en tiempo real.
-          El CSS tiene transition: width 0.3s que hace que crezca suavemente.
-        */
-      },
+    await set(newPhotoRef, {
+      id:        newPhotoRef.key,
+      url:       base64,      // La imagen completa en base64, sin Storage
+      author:    author,
+      timestamp: timestamp,
+      likes:     0
+      // Sin storagePath — ya no hay Storage
+    });
 
-      // CALLBACK 2: Error
-      (error) => {
-        console.error("Error al subir:", error);
-        alert("Hubo un error al subir la foto. Intentá de nuevo.");
-        btnConfirm.disabled = false;
-        uploadProgress.hidden = true;
-      },
+    progressFill.style.width = "100%";
+    progressText.textContent  = "¡Listo!";
 
-      // CALLBACK 3: Completado
-      async () => {
-        /*
-          La subida terminó. Ahora obtenemos la URL pública de la imagen.
-        */
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        /*
-          getDownloadURL devuelve la URL permanente de Firebase Storage.
-          Esta URL es pública y sirve para mostrar la imagen en el feed.
-        */
-
-        // Guardamos los datos de la foto en Realtime Database
-        const photosRef = dbRef(db, `${ALBUM_NAME}/photos`);
-        const newPhotoRef = push(photosRef);
-        /*
-          push() crea un nuevo hijo con ID automático único.
-          El ID generado es algo como "-NxK3mAbCdEfGhIj" (timestamp + random).
-          Es más seguro que usar un número incremental porque no hay race conditions.
-        */
-
-        await set(newPhotoRef, {
-          id:        newPhotoRef.key,  // Guardamos el ID dentro del objeto
-          url:       downloadURL,       // URL pública de la imagen en Storage
-          author:    author,
-          timestamp: timestamp,
-          likes:     0,                // Arranca en 0 likes
-          storagePath: `photos/${fileName}` // Guardamos el path para poder eliminarlo
-        });
-        /*
-          set() escribe el objeto en la ruta de Firebase.
-          Guardamos el storagePath para cuando el usuario quiera eliminar la foto:
-          necesitamos tanto la referencia en DB como en Storage.
-        */
-
-        // Éxito — limpiamos la UI
-        resetUploadUI();
-        btnConfirm.disabled = false;
-        /*
-          No necesitamos agregar la card manualmente al feed.
-          El listener onChildAdded en initFeed() detectará el nuevo registro
-          y renderizará la card automáticamente.
-        */
-      }
-    );
+    setTimeout(() => {
+      resetUploadUI();
+      btnConfirm.disabled = false;
+    }, 600);
+    // Pequeña pausa para que el usuario vea el "100% ¡Listo!" antes de resetear
 
   } catch (error) {
-    console.error("Error inesperado:", error);
-    alert("Error al subir la foto.");
+    console.error("Error al guardar:", error);
+    alert("Error al guardar la foto. Intentá de nuevo.");
     btnConfirm.disabled = false;
     uploadProgress.hidden = true;
   }
@@ -1183,48 +1071,11 @@ async function downloadPhoto(url, author) {
 // ═══════════════════════════════════════════════════
 
 async function deletePhoto(photo, db) {
-  /*
-    Eliminar una foto requiere dos pasos:
-    1. Eliminar el archivo de Firebase Storage (el binario de la imagen)
-    2. Eliminar el registro de la Realtime Database (los metadatos)
-    
-    Si solo eliminamos la DB, la imagen sigue ocupando espacio en Storage.
-    Si solo eliminamos Storage, en la DB queda un registro con URL rota.
-    
-    IMPORTANTE: El listener onChildRemoved en initFeed() se encargará
-    de remover la card del DOM automáticamente cuando se elimine de la DB.
-  */
-
   const confirmed = confirm("¿Seguro que querés eliminar esta foto?");
-  /*
-    confirm() muestra un diálogo nativo del navegador.
-    No es la UI más bonita, pero es la más confiable para confirmaciones
-    importantes (no se puede ignorar accidentalmente).
-  */
   if (!confirmed) return;
-
   try {
-    // Paso 1: Eliminar de Storage
-    if (photo.storagePath) {
-      const fileRef = storageRef(
-        window.__firebaseStorage,
-        photo.storagePath
-      );
-      await deleteObject(fileRef);
-    }
-
-    // Paso 2: Eliminar de la Database
-    const photoRef = dbRef(db, `${ALBUM_NAME}/photos/${photo.id}`);
-    await set(photoRef, null);
-    /*
-      set(ref, null) es la forma de eliminar un nodo en Firebase Realtime Database.
-      No existe un método "delete" explícito — setear a null elimina el nodo.
-    */
-
-    // También eliminamos los comentarios de esta foto (limpieza)
-    const commentsRef = dbRef(db, `${ALBUM_NAME}/photos/${photo.id}/comments`);
-    await set(commentsRef, null);
-
+    // Un solo paso: eliminar el nodo de la DB (incluye foto + comentarios)
+    await set(dbRef(db, `${ALBUM_NAME}/photos/${photo.id}`), null);
   } catch (error) {
     console.error("Error al eliminar:", error);
     alert("No se pudo eliminar la foto. Intentá de nuevo.");
