@@ -212,24 +212,23 @@ function resetUploadUI() {
 
 function compressImage(file, maxWidth = 1200, quality = 0.75) {
   /*
-    Comprime la imagen antes de guardarla en Firestore.
+    Comprime la imagen y quema los stickers encima en un canvas.
     
-    maxWidth: 1200px — suficiente para ver bien en pantalla,
-    sin ocupar demasiado espacio en la base de datos.
+    PROCESO:
+    1. Dibujamos la foto original escalada al tamaño final
+    2. Por cada sticker en el DOM, calculamos su posición y tamaño
+       relativos al canvas y lo dibujamos encima
+    3. Exportamos todo junto como base64 JPEG
     
-    quality: 0.75 — 75% de calidad JPEG. Buen balance entre
-    nitidez visual y tamaño del archivo resultante.
-    
-    Usamos un <canvas> invisible para redibujar la imagen
-    al nuevo tamaño y exportarla como base64.
-    
-    Retorna una Promise que resuelve con el string base64.
+    Así lo que se guarda en Firebase ya es la imagen final
+    con los stickers incorporados — no elementos flotantes del DOM.
   */
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    img.onload = () => {
-      // Calculamos el nuevo ancho manteniendo la proporción
+
+    img.onload = async () => {
+      // Tamaño final del canvas (foto escalada)
       const ratio  = Math.min(1, maxWidth / img.width);
       const width  = Math.round(img.width  * ratio);
       const height = Math.round(img.height * ratio);
@@ -237,14 +236,66 @@ function compressImage(file, maxWidth = 1200, quality = 0.75) {
       const canvas = document.createElement("canvas");
       canvas.width  = width;
       canvas.height = height;
-
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, width, height);
 
-      URL.revokeObjectURL(url); // Liberamos memoria
+      // 1. Dibujamos la foto de fondo
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+
+      // 2. Dibujamos cada sticker encima
+      const stickerEls = stickersOnPhoto.querySelectorAll(".sticker-on-photo");
+      /*
+        stickersOnPhoto es el contenedor de stickers del preview.
+        Iteramos cada sticker que el usuario colocó.
+      */
+
+      const previewRect = previewWrapper.getBoundingClientRect();
+      /*
+        Necesitamos el tamaño VISUAL del contenedor de preview
+        para calcular la escala entre pantalla y canvas.
+        
+        El canvas puede ser 1200px de ancho pero el preview
+        en pantalla puede ser 350px — la escala es 1200/350 ≈ 3.4.
+        Multiplicamos la posición y tamaño de cada sticker por esa escala.
+      */
+
+      const scaleX = width  / previewRect.width;
+      const scaleY = height / previewRect.height;
+
+      for (const stickerEl of stickerEls) {
+        const stickerImg = stickerEl.querySelector("img");
+        if (!stickerImg) continue;
+
+        // Posición del sticker relativa al contenedor de preview
+        const stickerRect = stickerEl.getBoundingClientRect();
+        const leftPx = stickerRect.left - previewRect.left;
+        const topPx  = stickerRect.top  - previewRect.top;
+
+        // Tamaño visual del sticker en pantalla
+        const stickerW = stickerRect.width;
+        const stickerH = stickerRect.height;
+
+        // Escalamos al tamaño del canvas
+        const canvasX = leftPx  * scaleX;
+        const canvasY = topPx   * scaleY;
+        const canvasW = stickerW * scaleX;
+        const canvasH = stickerH * scaleY;
+
+        // Cargamos la imagen del sticker y la dibujamos en el canvas
+        await new Promise((res) => {
+          const si = new Image();
+          si.onload = () => {
+            ctx.drawImage(si, canvasX, canvasY, canvasW, canvasH);
+            res();
+          };
+          si.onerror = res; // Si falla un sticker, continuamos igual
+          si.src = stickerImg.src;
+        });
+      }
+
       resolve(canvas.toDataURL("image/jpeg", quality));
-      // toDataURL devuelve "data:image/jpeg;base64,/9j/4AAQ..."
     };
+
     img.src = url;
   });
 }
@@ -255,33 +306,25 @@ async function uploadPhoto(db) {
 
   uploadProgress.hidden = false;
   btnConfirm.disabled   = true;
-  progressText.textContent = "Comprimiendo...";
-  progressFill.style.width = "30%";
-  /*
-    Mostramos 30% mientras comprime — la compresión es local
-    y rápida, pero el usuario necesita feedback visual
-    para saber que algo está pasando.
-  */
+  progressText.textContent = "Componiendo imagen...";
+  progressFill.style.width = "20%";
 
   try {
-    // Paso 1: Comprimir la imagen
+    // Comprimimos Y quemamos stickers en un solo paso
     const base64 = await compressImage(selectedFile);
     progressFill.style.width  = "60%";
     progressText.textContent  = "Guardando...";
 
-    // Paso 2: Guardar en Realtime Database
-    const photosRef  = dbRef(db, `${ALBUM_NAME}/photos`);
+    const photosRef   = dbRef(db, `${ALBUM_NAME}/photos`);
     const newPhotoRef = push(photosRef);
-
     progressFill.style.width = "80%";
 
     await set(newPhotoRef, {
       id:        newPhotoRef.key,
-      url:       base64,      // La imagen completa en base64, sin Storage
+      url:       base64,
       author:    author,
       timestamp: timestamp,
       likes:     0
-      // Sin storagePath — ya no hay Storage
     });
 
     progressFill.style.width = "100%";
@@ -291,7 +334,6 @@ async function uploadPhoto(db) {
       resetUploadUI();
       btnConfirm.disabled = false;
     }, 600);
-    // Pequeña pausa para que el usuario vea el "100% ¡Listo!" antes de resetear
 
   } catch (error) {
     console.error("Error al guardar:", error);
